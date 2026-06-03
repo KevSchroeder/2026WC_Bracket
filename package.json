@@ -1,0 +1,22 @@
+{
+  "name": "world-cup-2026-bracket",
+  "version": "2.0.0",
+  "description": "2026 World Cup bracket pool — predict, invite friends, live leaderboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tasks/check.js && node tasks/engine-check.js && node tasks/api-check.js",
+    "e2e": "node tasks/shots.js"
+  },
+  "keywords": ["world-cup", "bracket", "pool"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "puppeteer-core": "^25.1.0"
+  }
+}
