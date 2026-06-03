@@ -223,14 +223,17 @@ function mountKnockout(container, state, opts) {
   function pickWinner(match, id) {
     if (state.results[match.m] === id) return;
     state.results[match.m] = id;
-    render();
-    const justEl = container.querySelector(`.match[data-m="${match.m}"] .slot.winner`);
-    justEl && justEl.classList.add("just-won");
-    if (match.next) {
-      const nextEl = container.querySelector(`.match[data-m="${match.next}"]`);
-      nextEl && $$(".slot", nextEl).forEach(x => { if (x.dataset.team === id) x.classList.add("fill-in"); });
-    }
     opts.onChange && opts.onChange(match.m === 104 ? id : null);
+    render();  // sync: DOM must be current before next click resolves
+    // Defer only the animation class additions to the next frame to avoid layout thrash
+    requestAnimationFrame(() => {
+      const justEl = container.querySelector(`.match[data-m="${match.m}"] .slot.winner`);
+      justEl && justEl.classList.add("just-won");
+      if (match.next) {
+        const nextEl = container.querySelector(`.match[data-m="${match.next}"]`);
+        nextEl && $$(".slot", nextEl).forEach(x => { if (x.dataset.team === id) x.classList.add("fill-in"); });
+      }
+    });
   }
   render();
   return { render };
