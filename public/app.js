@@ -13,7 +13,7 @@ const topRight = document.getElementById("topRight");
 let POOL_ID = null, ME = null, POOL = null;
 let working = null, officialWorking = null;
 let editView = "groups", officialView = "groups", revealTab = "mybracket", everyoneView = null;
-let saveTimer = null, pollTimer = null, countdownTimer = null, finaleShown = false, savingState = "idle";
+let saveTimer = null, officialSaveTimer = null, pollTimer = null, countdownTimer = null, finaleShown = false, savingState = "idle";
 
 /* ------------------------------- helpers --------------------------------- */
 function h(tag, props, ...kids) {
@@ -30,7 +30,7 @@ function h(tag, props, ...kids) {
   return e;
 }
 const clone = o => JSON.parse(JSON.stringify(o || {}));
-const inviteUrl = () => location.origin + (POOL ? POOL.invite.path : "/");
+const inviteUrl = () => POOL && POOL.invite ? location.origin + POOL.invite.path : null;
 function normPicks(p) { p = clone(p); p.groups = p.groups || {}; GROUP_LETTERS.forEach(L => { if (!Array.isArray(p.groups[L])) p.groups[L] = []; }); p.thirds = Array.isArray(p.thirds) ? p.thirds : []; p.results = p.results || {}; if (typeof p.tiebreakerGoals !== "number") p.tiebreakerGoals = null; return p; }
 
 let toastT = null;
@@ -69,6 +69,7 @@ function init() {
 
 /* ------------------------------- LANDING --------------------------------- */
 function goLanding() {
+  clearTimeout(saveTimer); clearTimeout(officialSaveTimer); clearInterval(countdownTimer);
   stopPoll(); POOL = null; POOL_ID = null; ME = null; topRight.innerHTML = ""; setProgress(0);
   history.replaceState(null, "", location.pathname);
   const recent = recentPools();
@@ -163,7 +164,10 @@ async function loadPool(opts = {}) {
   // keep stored poolName fresh
   if (ME && POOL.poolName && ME.poolName !== POOL.poolName) { ME.poolName = POOL.poolName; Identity.save(POOL_ID, ME); }
   history.replaceState(null, "", location.pathname + `?pool=${POOL_ID}`);
-  working = normPicks(POOL.you.picks);   // fresh from server; preserved across step nav until next load
+  // Reset per-pool session state (tab, everyone selection, finale flag) on every load.
+  // keepWorking: preserve in-memory picks when 423 fires mid-edit so user sees what they had.
+  if (!opts.keepWorking) working = normPicks(POOL.you.picks);
+  revealTab = "mybracket"; everyoneView = null; finaleShown = false;
   renderTopRight();
   if (!POOL.revealed) { POOL.you.submitted ? renderLocked() : renderEdit(opts); }
   else renderRevealed();
@@ -177,7 +181,7 @@ function renderTopRight() {
     h("span", { class: "pool-chip-name" }, POOL.poolName),
     h("span", { class: "pool-chip-meta" }, `${POOL.members.length} player${POOL.members.length > 1 ? "s" : ""}`),
     adminBadge));
-  topRight.appendChild(h("button", { class: "btn btn-ghost btn-sm", onclick: () => copy(inviteUrl()) }, "Invite"));
+  if (inviteUrl()) topRight.appendChild(h("button", { class: "btn btn-ghost btn-sm", onclick: () => copy(inviteUrl()) }, "Invite"));
   topRight.appendChild(h("button", { class: "btn btn-ghost btn-sm", title: "Switch pool / leave", onclick: leave }, "Leave"));
 }
 function leave() { if (!confirm("Leave this pool on this device? You can rejoin with the invite link.")) return; Identity.forget(POOL_ID); goLanding(); }
@@ -191,11 +195,12 @@ function renderEdit() {
     h("button", { class: "step" + (editView === k ? " active" : "") + (stepDone(k) ? " done" : ""), disabled: stepLocked(k), onclick: () => { editView = k; renderEdit(); } },
       h("i", {}, i + 1), h("span", {}, label))));
 
-  const inviteBar = h("div", { class: "invite-bar" },
+  const iurl = inviteUrl();
+  const inviteBar = iurl ? h("div", { class: "invite-bar" },
     h("span", { class: "invite-ico" }, "🔗"),
     h("div", { class: "invite-text" }, h("b", {}, "Invite your friends"), h("span", { class: "muted" }, "Everyone needs the link to join before kickoff.")),
-    h("input", { class: "inp invite-input", readonly: "", value: inviteUrl(), onclick: e => e.target.select() }),
-    h("button", { class: "btn btn-primary btn-sm", onclick: () => copy(inviteUrl()) }, "Copy link"));
+    h("input", { class: "inp invite-input", readonly: "", value: iurl, onclick: e => e.target.select() }),
+    h("button", { class: "btn btn-primary btn-sm", onclick: () => copy(iurl) }, "Copy link")) : null;
 
   const body = h("div", { class: "edit-body" });
   const foot = h("div", { class: "view-foot" });
@@ -257,7 +262,7 @@ function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     try { await API.savePicks(POOL_ID, ME.token, working); savingState = "saved"; }
-    catch (e) { savingState = "idle"; if (/locked|started|423/i.test(e.message)) { toast("The tournament just started — picks are locked."); return loadPool(); } toast(e.message); }
+    catch (e) { savingState = "idle"; if (/locked|started|423/i.test(e.message)) { toast("The tournament just started — picks are locked."); return loadPool({ keepWorking: true }); } toast(e.message); }
     updateEditChrome();
   }, 700);
 }
@@ -281,7 +286,7 @@ function renderLocked() {
       h("div", { class: "countdown", id: "countdown" }),
       champ ? h("div", { class: "locked-champ" }, "Your champion pick: ", BracketUI.flag(champ), h("b", {}, BracketUI.team(champ).name)) : null,
       h("div", { class: "row-btns" },
-        h("button", { class: "btn btn-ghost", onclick: () => copy(inviteUrl()) }, "Invite more players"),
+        inviteUrl() ? h("button", { class: "btn btn-ghost", onclick: () => copy(inviteUrl()) }, "Invite more players") : null,
         h("button", { class: "btn btn-primary", onclick: () => { revealTab = "mybracket"; renderMyBracketReadonly(true); } }, "Review my bracket"))),
     rosterPanel(), adminPanel()));
   startCountdown();
@@ -328,12 +333,12 @@ function adminPanel() {
 function toLocalInput(iso) { const d = new Date(iso); const l = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return l.toISOString().slice(0, 16); }
 async function saveLockAt() {
   const v = document.getElementById("lockAtInp").value; if (!v) return;
-  try { await API.setSettings(POOL_ID, ME.token, { lockAt: new Date(v).toISOString() }); toast("Kickoff updated"); loadPool(); }
+  try { await API.setSettings(POOL_ID, ME.token, { lockAt: new Date(v).toISOString() }); toast("Kickoff updated"); await loadPool(); }
   catch (e) { toast(e.message); }
 }
 async function startNow() {
   if (!confirm("Start the tournament now? This locks every bracket and reveals all picks.")) return;
-  try { await API.setSettings(POOL_ID, ME.token, { lockAt: new Date(Date.now() - 1000).toISOString() }); toast("Tournament started!"); loadPool(); }
+  try { await API.setSettings(POOL_ID, ME.token, { lockAt: new Date(Date.now() - 1000).toISOString() }); toast("Tournament started!"); await loadPool(); }
   catch (e) { toast(e.message); }
 }
 
@@ -409,7 +414,6 @@ function renderLeaderboard() {
   const table = h("div", { class: "lb" },
     h("div", { class: "lb-row lb-head" }, h("span", { class: "lb-rk" }, "#"), h("span", { class: "lb-name" }, "Player"), h("span", { class: "lb-champ" }, "Champion"), h("span", { class: "lb-acc" }, "Acc"), h("span", { class: "lb-pts" }, "PTS")));
   board.forEach(r => {
-    const champ = r.breakdown && POOL.members.find(m => m.id === r.id);
     const champId = champPickOf(r.id);
     const msg = POOL.finale && POOL.finale.messages.find(m => m.id === r.id);
     table.appendChild(h("div", { class: "lb-row" + (r.id === POOL.you.id ? " you" : "") + (r.rank === 1 ? " lead" : "") },
@@ -474,8 +478,8 @@ function renderOfficial() {
 }
 function scheduleOfficialSave() {
   const el = document.getElementById("officialSave"); if (el) el.textContent = "Saving…";
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
+  clearTimeout(officialSaveTimer);
+  officialSaveTimer = setTimeout(async () => {
     const fg = document.getElementById("finalGoals"); const finalGoals = fg && fg.value !== "" ? parseInt(fg.value, 10) : undefined;
     try {
       const r = await API.setOfficial(POOL_ID, ME.token, officialWorking, finalGoals);
@@ -526,7 +530,7 @@ async function refresh() {
   try {
     const prev = revealTab, ev = everyoneView, complete = POOL.complete;
     POOL = await API.getPool(POOL_ID, ME.token);
-    if (!POOL.revealed) return loadPool();
+    if (!POOL.revealed) { await loadPool(); return; }   // await prevents post-loadPool renders
     revealTab = prev; everyoneView = ev;
     if (revealTab === "leaderboard") renderLeaderboard();
     else if (revealTab === "everyone") renderEveryone();
@@ -534,7 +538,10 @@ async function refresh() {
     renderTopRight();
     if (POOL.complete && !complete) maybeShowFinale();
     if (POOL.complete) stopPoll();
-  } catch (e) { /* transient */ }
+  } catch (e) {
+    if (/401|Not a member|member of this pool/i.test(e.message)) { Identity.forget(POOL_ID); goLanding(); }
+    // else: transient network error — skip silently, next tick will retry
+  }
 }
 
 /* ------------------------------ CONFETTI --------------------------------- */

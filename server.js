@@ -23,8 +23,19 @@ const code = () => crypto.randomBytes(3).toString("hex").toUpperCase(); // 6-cha
 const nowMs = () => Date.now();
 const lockMs = pool => Date.parse(pool.lockAt || DEFAULT_LOCK);
 const isRevealed = pool => nowMs() >= lockMs(pool);
-const tokenOf = req => req.query.token || req.get("x-token") || (req.body && req.body.token);
+const tokenOf = req => req.get("x-token") || (req.body && req.body.token);   // never accept via URL
 const err = (res, c, m) => res.status(c).json({ error: m });
+
+/* simple in-memory rate limiter for the join endpoint (no external deps) */
+const _joinRate = new Map();
+function checkJoinRate(key) {
+  const now = Date.now();
+  let r = _joinRate.get(key) || { n: 0, reset: now + 60000 };
+  if (now > r.reset) r = { n: 0, reset: now + 60000 };
+  r.n++;
+  _joinRate.set(key, r);
+  return r.n <= 10;                    // max 10 attempts per minute per pool+ip
+}
 
 function memberByToken(pool, token) {
   return token && Object.values(pool.members).find(m => m.token === token);
@@ -38,9 +49,13 @@ function sanitizePicks(p) {
       ? p.groups[L].filter(id => GROUPS[L].includes(id)) : [];
     out.groups[L] = [...new Set(arr)].slice(0, 3);
   });
-  const thirdPool = new Set(GROUP_LETTERS.map(L => out.groups[L][2]).filter(Boolean));
+  // Only reject a thirds pick when the team's group is fully set (3 picks) AND
+  // the team is NOT the group's third — avoids wiping thirds on partial auto-saves.
   out.thirds = Array.isArray(p.thirds)
-    ? [...new Set(p.thirds.filter(id => thirdPool.has(id)))].slice(0, 8) : [];
+    ? [...new Set(p.thirds.filter(id => {
+        const grp = out.groups[ENGINE.TEAM_GROUP[id]] || [];
+        return grp.length < 3 || grp[2] === id;
+      }))].slice(0, 8) : [];
   if (p.results && typeof p.results === "object") {
     for (const k of Object.keys(p.results)) {
       const m = +k;
@@ -112,7 +127,7 @@ function poolView(pool, me) {
     poolId: pool.id, poolName: pool.name, lockAt: pool.lockAt || DEFAULT_LOCK,
     now: new Date().toISOString(), revealed, complete, maxScore: ENGINE.POINTS.max,
     points: ENGINE.POINTS, isAdmin: !!isAdmin,
-    invite: { code: pool.inviteCode, path: `/?pool=${pool.id}&code=${pool.inviteCode}` },
+    invite: isAdmin ? { code: pool.inviteCode, path: `/?pool=${pool.id}&code=${pool.inviteCode}` } : null,
     you: me ? { id: me.id, name: me.name, submitted: !!me.submitted, isAdmin: !!isAdmin, picks: me.picks || {} } : null,
     members,
     leaderboard: board,
@@ -128,7 +143,9 @@ app.post("/api/pools", (req, res) => {
   const display = (req.body.displayName || "").toString().trim().slice(0, 40);
   if (!display) return err(res, 400, "Your name is required");
   const id = rid(5), token = rid(16), memberId = rid(5);
-  const lockAt = req.body.lockAt && !isNaN(Date.parse(req.body.lockAt)) ? new Date(req.body.lockAt).toISOString() : DEFAULT_LOCK;
+  // Reject past dates — a past lockAt would make the pool immediately locked and unusable
+  const rawLock = req.body.lockAt, parsedLock = rawLock && Date.parse(rawLock);
+  const lockAt = (parsedLock && parsedLock > Date.now()) ? new Date(parsedLock).toISOString() : DEFAULT_LOCK;
   const pool = {
     id, name, inviteCode: code(), createdAt: new Date().toISOString(),
     lockAt, adminMemberId: memberId, official: {}, members: {},
@@ -141,6 +158,8 @@ app.post("/api/pools", (req, res) => {
 
 // join via invite code
 app.post("/api/pools/:id/join", (req, res) => {
+  const ip = req.socket.remoteAddress || "unknown";
+  if (!checkJoinRate(req.params.id + ":" + ip)) return err(res, 429, "Too many join attempts — try again in a minute");
   const pool = db.pools[req.params.id];
   if (!pool) return err(res, 404, "Pool not found");
   const inviteCode = (req.body.inviteCode || "").toString().trim().toUpperCase();

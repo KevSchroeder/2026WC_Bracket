@@ -41,6 +41,10 @@ function fullBracket(thirdsGroups = GROUP_LETTERS.slice(0, 8)) {
   await new Promise(r => server.once("listening", r));
   base = "http://127.0.0.1:" + server.address().port;
 
+  sec("lockAt safety + pool creation");
+  const pastPool = await api("POST", "/api/pools", { poolName: "Past Pool", displayName: "X", lockAt: "2000-01-01T00:00:00Z" });
+  ok(pastPool.status === 200 && pastPool.data.lockAt !== "2000-01-01T00:00:00.000Z", "past lockAt rejected → falls back to default");
+
   sec("Create + join");
   const create = await api("POST", "/api/pools", { poolName: "Test Pool", displayName: "Alice" });
   ok(create.status === 200 && create.data.poolId, "pool created");
@@ -55,6 +59,16 @@ function fullBracket(thirdsGroups = GROUP_LETTERS.slice(0, 8)) {
   ok(badCode.status === 403, "wrong invite code rejected");
   const dupName = await api("POST", `/api/pools/${pid}/join`, { inviteCode: code, displayName: "alice" });
   ok(dupName.status === 409, "duplicate name rejected");
+
+  sec("thirdPool partial-save safety");
+  const partialBracket = fullBracket();
+  // Send only 2 picks for group A (no third) but keep a valid thirds pick for group A's team
+  const thirdTeamA = GROUPS["A"][2];
+  const partialGroups = { ...partialBracket.groups, A: GROUPS["A"].slice(0, 2) };
+  const savedPartial = await api("PUT", `/api/pools/${pid}/picks`, { picks: { ...partialBracket, groups: partialGroups, thirds: [thirdTeamA] } }, bTok);
+  ok(savedPartial.status === 200, "partial save accepted");
+  // Group A has only 2 picks — thirdTeamA should be PRESERVED (not wiped)
+  ok(savedPartial.data.picks.thirds.includes(thirdTeamA), "thirds not wiped when group has < 3 picks, got: " + JSON.stringify(savedPartial.data.picks.thirds));
 
   sec("Save + submit picks");
   const aliceBracket = fullBracket();
@@ -85,6 +99,9 @@ function fullBracket(thirdsGroups = GROUP_LETTERS.slice(0, 8)) {
   ok(beforeBob.data.you.picks && Object.keys(beforeBob.data.you.picks.groups || {}).length === 12, "you can see your own picks");
   ok(others.some(m => m.submitted === true), "submission status visible (roster) without picks");
   ok(beforeBob.data.official === null, "non-admin can't see official before reveal");
+  ok(beforeBob.data.invite === null, "invite code hidden from non-admin members");
+  const beforeAlice = await api("GET", `/api/pools/${pid}`, null, aTok);
+  ok(beforeAlice.data.invite && beforeAlice.data.invite.code === code, "admin can see invite code");
 
   sec("Reveal (kickoff) + official results");
   ok((await api("POST", `/api/pools/${pid}/settings`, { lockAt: new Date(Date.now() - 60000).toISOString() }, aTok)).status === 200, "admin moved kickoff to the past");
