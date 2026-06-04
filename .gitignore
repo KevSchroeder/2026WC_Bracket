@@ -1,2 +1,8 @@
 /data/
 /node_modules/
+/dist/
+*.local
+tasks/dbg*.js
+tasks/screenshot.js
+tasks/shots/*.png
+*.txt

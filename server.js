@@ -12,7 +12,11 @@ const DATA = require("./public/shared/data.js");
 const ENGINE = require("./public/shared/engine.js");
 const { GROUPS, GROUP_LETTERS } = DATA;
 
+const fs = require("fs");
 const PUBLIC = path.join(__dirname, "public");
+const DIST   = path.join(__dirname, "dist");
+// Serve from dist/ (React build) when available, fall back to legacy public/ for dev
+const SERVE_DIR = fs.existsSync(path.join(DIST, "index.html")) ? DIST : PUBLIC;
 const DEFAULT_LOCK = "2026-06-11T16:00:00Z";   // first match of the tournament
 const app = express();
 app.use(express.json({ limit: "256kb" }));
@@ -239,9 +243,9 @@ app.post("/api/pools/:id/settings", (req, res) => {
   res.json({ ok: true, lockAt: pool.lockAt });
 });
 
-/* static SPA */
-app.use(express.static(PUBLIC));
-app.use((req, res) => res.sendFile(path.join(PUBLIC, "index.html")));
+/* static SPA — serves React build (dist/) in production, legacy public/ in dev */
+app.use(express.static(SERVE_DIR));
+app.use((req, res) => res.sendFile(path.join(SERVE_DIR, "index.html")));
 
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {

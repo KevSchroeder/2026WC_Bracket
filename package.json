@@ -5,18 +5,38 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "dev": "concurrently \"node server.js\" \"vite\"",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "node tasks/check.js && node tasks/engine-check.js && node tasks/api-check.js",
     "e2e": "node tasks/shots.js"
   },
-  "keywords": ["world-cup", "bracket", "pool"],
+  "keywords": [
+    "world-cup",
+    "bracket",
+    "pool"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "autoprefixer": "^10.5.0",
+    "clsx": "^2.1.1",
+    "concurrently": "^10.0.3",
     "jsdom": "^29.1.1",
-    "puppeteer-core": "^25.1.0"
+    "postcss": "^8.5.15",
+    "puppeteer-core": "^25.1.0",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
   }
 }

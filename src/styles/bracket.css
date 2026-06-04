@@ -1,0 +1,31 @@
+/* Knockout bracket connector lines — CSS pseudo-element tricks that can't be
+   expressed cleanly as Tailwind utility classes due to dynamic correctness state. */
+:root { --gap: 46px; --match-h: 74px; }
+
+.bracket-side .match-wrap::after {
+  content: ""; position: absolute; top: 50%; height: 2px;
+  width: calc(var(--gap) / 2); background: #283260;
+}
+.bracket-side.left  .match-wrap::after { right: calc(var(--gap) / -2); }
+.bracket-side.right .match-wrap::after { left:  calc(var(--gap) / -2); }
+
+/* correct picks: bright green outgoing line */
+.bracket-side .match-wrap.correct::after { background: #2bed6b; box-shadow: 0 0 7px rgba(43,237,107,0.55); height: 2px; }
+
+/* vertical join connectors for R16/QF/SF (not R32/F) */
+.conn { position: absolute; top: 25%; height: 50%; width: calc(var(--gap) / 2); }
+.bracket-side.left  .conn { left:  calc(var(--gap) / -2); border-left:  2px solid #283260; }
+.bracket-side.right .conn { right: calc(var(--gap) / -2); border-right: 2px solid #283260; }
+.conn::after { content: ""; position: absolute; top: 50%; height: 2px; width: 100%; background: #283260; }
+.bracket-side.left  .conn::after { left: 0; }
+.bracket-side.right .conn::after { right: 0; }
+
+/* correct: green connectors */
+.match-wrap.correct > .conn,
+.match-wrap.correct > .conn::after { border-color: #2bed6b !important; background: #2bed6b !important; }
+
+/* match card border glow when correct */
+.match-wrap.correct .match-card { border-color: rgba(43,237,107,0.45) !important; }
+
+/* winner slot in correct match: green left border */
+.match-wrap.correct .slot-winner { background: linear-gradient(90deg,rgba(43,237,107,.26),rgba(43,237,107,.05)) !important; border-left-color: #2bed6b !important; }
