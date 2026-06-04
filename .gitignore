@@ -2,7 +2,9 @@
 /node_modules/
 /dist/
 *.local
+*.env
+.env*
 tasks/dbg*.js
 tasks/screenshot.js
-tasks/shots/*.png
+tasks/shots/
 *.txt

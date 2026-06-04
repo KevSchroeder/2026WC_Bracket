@@ -141,6 +141,12 @@ function poolView(pool, me) {
 }
 
 /* -------------------------------- routes -------------------------------- */
+// Validate :id params — blocks __proto__ / constructor prototype pollution
+app.param("id", (req, res, next, id) => {
+  if (!/^[0-9a-f]{10}$/.test(id)) return err(res, 400, "Invalid pool id");
+  next();
+});
+
 // create a pool (creator becomes admin member)
 app.post("/api/pools", (req, res) => {
   const name = (req.body.poolName || "").toString().trim().slice(0, 60) || "World Cup Pool";
