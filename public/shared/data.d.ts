@@ -11,4 +11,6 @@ export declare const BRACKET: Array<{
   next: number | null
 }>
 export declare const THIRD_SLOTS: Array<{ slot: number; m: number; group: string }>
+export declare const THIRD_COMBO_HDR: string[]
+export declare const THIRD_COMBINATIONS: Record<string, string>
 export declare const ROUND_META: Record<string, { name: string; short: string }>
