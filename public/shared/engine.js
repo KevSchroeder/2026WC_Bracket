@@ -11,7 +11,7 @@
 (function (root) {
 "use strict";
 const D = (typeof module !== "undefined" && module.exports) ? require("./data.js") : root;
-const { GROUPS, GROUP_LETTERS, BRACKET, THIRD_SLOTS } = D;
+const { GROUPS, GROUP_LETTERS, BRACKET, THIRD_SLOTS, THIRD_COMBO_HDR, THIRD_COMBINATIONS } = D;
 
 const TEAM_GROUP = {};
 GROUP_LETTERS.forEach(L => GROUPS[L].forEach(id => TEAM_GROUP[id] = L));
@@ -26,8 +26,33 @@ const POINTS = {
   max: 2080,
 };
 
-/* ---- third-place constraint assignment (Kuhn's bipartite matching) -------- */
+/* ---- third-place slot assignment -----------------------------------------
+   When all 8 best-third groups are known, follow the OFFICIAL FIFA Annex C
+   table (data.js) that fixes which group winner faces which third-place team.
+   While the user is still picking (<8 thirds), fall back to a stable bipartite
+   preview so the bracket stays legible mid-edit. */
 function thirdAssignment(thirdsIds) {
+  const groups = thirdsIds.map(id => TEAM_GROUP[id]);
+  const distinct = [...new Set(groups)];
+  if (distinct.length === 8 && THIRD_COMBINATIONS) {
+    const key = distinct.slice().sort().join("");
+    const combo = THIRD_COMBINATIONS[key];
+    if (combo) {
+      const map = {};
+      THIRD_SLOTS.forEach(s => {
+        const thirdGroup = combo[THIRD_COMBO_HDR.indexOf(s.group)];
+        const id = thirdsIds.find(t => TEAM_GROUP[t] === thirdGroup);
+        if (id) map[s.slot] = id;
+      });
+      return map;
+    }
+  }
+  return partialThirdAssignment(thirdsIds);
+}
+
+/* fallback for an incomplete set of thirds (Kuhn's bipartite matching, with the
+   real-world constraint that a third can't face the winner of its own group) */
+function partialThirdAssignment(thirdsIds) {
   const thirds = thirdsIds.map(id => ({ id, g: TEAM_GROUP[id] }));
   const slots = THIRD_SLOTS, n = slots.length;
   const slotToThird = new Array(n).fill(-1);
